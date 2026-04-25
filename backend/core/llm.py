@@ -33,6 +33,9 @@ def chat_json(
 
     We force `response_format=json_object` so the model returns parseable
     JSON. Caller is responsible for shape validation (Pydantic).
+
+    Robust: returns an empty dict on parse failure (e.g. truncated output)
+    rather than raising. Callers must handle missing keys gracefully.
     """
     client = get_client()
     resp = client.chat.completions.create(
@@ -49,9 +52,24 @@ def chat_json(
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        # Last-resort: strip code fences if model added them.
-        cleaned = content.strip().lstrip("```json").lstrip("```").rstrip("```")
+        pass
+    # Strip optional code fences and try again.
+    cleaned = content.strip().lstrip("```json").lstrip("```").rstrip("```")
+    try:
         return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    # Last resort: try to recover the leading well-formed prefix
+    # (truncated outputs often only break in the trailing 'evidence' block).
+    for cutoff in range(len(cleaned), 0, -1):
+        prefix = cleaned[:cutoff].rstrip().rstrip(",")
+        # Try closing with a brace.
+        candidate = prefix + "}" if not prefix.endswith("}") else prefix
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return {}
 
 
 def chat_text(

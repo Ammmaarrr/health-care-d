@@ -20,11 +20,21 @@ def main() -> None:
     p.add_argument("--n", type=int, default=None, help="Sample size override.")
     p.add_argument("--all", action="store_true", help="Process every row.")
     p.add_argument("--workers", type=int, default=5)
+    p.add_argument(
+        "--types",
+        default="hospital,clinic",
+        help="Comma-separated facility types to include (default: hospital,clinic).",
+    )
     args = p.parse_args()
 
     n = 0 if args.all else (args.n if args.n is not None else settings.extraction_sample_size)
-    print(f"[bold]Batch extraction[/] sample_size={n if n else 'ALL'} workers={args.workers}")
-    out = run_batch(sample_size=n, workers=args.workers)
+    types = [t.strip() for t in args.types.split(",") if t.strip()] if args.types else None
+
+    print(
+        f"[bold]Batch extraction[/] sample_size={n if n else 'ALL'} "
+        f"workers={args.workers} types={types}"
+    )
+    out = run_batch(sample_size=n, workers=args.workers, facility_types=types)
     print(f"[bold green]Done.[/] Wrote {out}")
 
 

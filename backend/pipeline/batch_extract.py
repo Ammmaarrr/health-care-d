@@ -60,11 +60,20 @@ def _process_row(row: dict) -> dict:
     }
 
 
-def run_batch(*, sample_size: int | None = None, workers: int = 5) -> Path:
+def run_batch(
+    *,
+    sample_size: int | None = None,
+    workers: int = 5,
+    facility_types: list[str] | None = None,
+) -> Path:
     out = settings.extractions_path
     out.parent.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_parquet(settings.processed_path)
+    if facility_types:
+        df = df[df["facility_type"].isin(facility_types)].reset_index(drop=True)
+        print(f"Filtered to facility types {facility_types}: {len(df)} rows.")
+
     if sample_size is None:
         sample_size = settings.extraction_sample_size
     df = _stratified_sample(df, sample_size)
