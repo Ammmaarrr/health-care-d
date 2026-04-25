@@ -13,6 +13,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Create the HF-style non-root user.
 RUN useradd -m -u 1000 user
+
+# Make the WORKDIR user-writable (Docker creates it as root by default).
+RUN mkdir -p /home/user/app && chown -R user:user /home/user
 WORKDIR /home/user/app
 
 # Install deps first (better layer caching).
@@ -29,6 +32,12 @@ COPY --chown=user:user scripts ./scripts
 COPY --chown=user:user data ./data
 
 USER user
+
+# Use writable paths inside the container. /tmp is always writable on HF
+# Spaces; the WORKDIR is now user-owned too, but /tmp also handles
+# read-only filesystem cases.
+ENV MLFLOW_TRACKING_URI=/tmp/mlruns
+ENV PYTHONPATH=/home/user/app
 
 EXPOSE 7860
 
