@@ -1,3 +1,15 @@
+---
+title: Healthmap Agent
+emoji: 🏥
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+short_description: Agentic Healthcare Intelligence for India 10k facilities
+---
+
 # Healthmap Agent — Agentic Healthcare Intelligence System
 
 Multi-agent system that turns the Virtue Foundation India 10k facility dataset into a **trust-aware** healthcare-discovery API. Built for the *Serving A Nation* hackathon (MIT Club of Northern California × Germany).

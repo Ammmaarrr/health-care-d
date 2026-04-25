@@ -1,0 +1,25 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.cursor/
+.vscode/
+.idea/
+*.log
+batch_extract.log
+batch_hospitals.log
+mlruns/
+mlartifacts/
+node_modules/
+.env
+notebooks/
+docs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# We DO want data/ in the image because the FastAPI app reads from it.
+# Keep dataset/ out — the parquet + faiss derived from it are enough.
+dataset/

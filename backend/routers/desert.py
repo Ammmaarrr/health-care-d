@@ -1,7 +1,7 @@
 """GET /desert-map route — aggregates pre-extracted capabilities by state."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 import pandas as pd
 
 from backend.config import settings
@@ -15,7 +15,15 @@ _CAP_COLS = ("has_icu", "has_emergency", "has_surgery",
 
 
 @router.get("/desert-map", response_model=DesertMapResponse)
-def desert_map() -> DesertMapResponse:
+def desert_map(
+    min_total: int = Query(5, ge=0, description="Hide groups with fewer than this many facilities."),
+    capability: str | None = Query(None, description="Optional filter: 'icu', 'surgery', etc."),
+) -> DesertMapResponse:
+    """Aggregated view of capability gaps by state.
+
+    A `gap_ratio` close to 1 means most facilities in that state either
+    explicitly lack or have unconfirmed access to the capability.
+    """
     if not settings.extractions_path.exists():
         raise HTTPException(503, "Extractions not built yet.")
     df = pd.read_parquet(settings.extractions_path)
@@ -25,18 +33,24 @@ def desert_map() -> DesertMapResponse:
     gaps: list[DesertGap] = []
     for state, sub in df.groupby("state"):
         total = int(len(sub))
-        for cap in _CAP_COLS:
-            if cap not in sub.columns:
+        if total < min_total:
+            continue
+        for col in _CAP_COLS:
+            if col not in sub.columns:
                 continue
-            missing = int(((sub[cap] == "no") | (sub[cap] == "uncertain")).sum())
+            cap_name = col.replace("has_", "")
+            if capability and cap_name != capability.lower():
+                continue
+            missing = int(((sub[col] == "no") | (sub[col] == "uncertain")).sum())
             gaps.append(
                 DesertGap(
                     state=str(state),
-                    capability=cap.replace("has_", ""),
+                    capability=cap_name,
                     missing_or_uncertain=missing,
                     total=total,
+                    gap_ratio=round(missing / total, 3),
                 )
             )
     # Sort: worst gaps (highest ratio) first.
-    gaps.sort(key=lambda g: g.missing_or_uncertain / max(g.total, 1), reverse=True)
+    gaps.sort(key=lambda g: g.gap_ratio, reverse=True)
     return DesertMapResponse(gaps=gaps)

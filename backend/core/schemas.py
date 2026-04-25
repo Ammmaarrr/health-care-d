@@ -140,10 +140,7 @@ class DesertGap(BaseModel):
     capability: str
     missing_or_uncertain: int
     total: int
-
-    @property
-    def gap_ratio(self) -> float:
-        return self.missing_or_uncertain / max(self.total, 1)
+    gap_ratio: float
 
 
 class DesertMapResponse(BaseModel):

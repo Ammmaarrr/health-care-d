@@ -8,7 +8,7 @@ from backend.app import app
 
 def main() -> None:
     client = TestClient(app)
-    resp = client.get("/desert-map")
+    resp = client.get("/desert-map", params={"min_total": 30})
     print("Status:", resp.status_code)
     if resp.status_code != 200:
         print(resp.text)

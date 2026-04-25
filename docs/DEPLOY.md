@@ -1,21 +1,28 @@
 # Deploy guide
 
-## Backend → Hugging Face Spaces (Docker)
+Backend → **Hugging Face Spaces (Docker)**, frontend → **Vercel**.
+
+---
+
+## Backend on HF Spaces
 
 ### 1. Create the Space (one-time)
-
 1. Go to https://huggingface.co/new-space
 2. Owner: your account
-3. Space name: `healthmap-agent`
+3. Name: `healthmap-agent`
 4. License: MIT
-5. **SDK: Docker**
+5. **SDK: Docker** (do not pick Streamlit/Gradio)
 6. **Hardware: CPU basic (free)**
 7. Visibility: Public
 8. Click **Create Space**
 
-### 2. Add Space secrets (one-time)
+The newly-created Space is just a git repo at `https://huggingface.co/spaces/<you>/healthmap-agent`.
 
-In the Space → **Settings → Variables and secrets**, add:
+### 2. Generate a write token
+- https://huggingface.co/settings/tokens → **Create new token** → role **write** → copy.
+
+### 3. Add Space secrets (one-time)
+In the Space → **Settings → Variables and secrets**, click **New secret** and add:
 
 | Name | Value |
 |---|---|
@@ -23,76 +30,65 @@ In the Space → **Settings → Variables and secrets**, add:
 | `TAVILY_API_KEY` | your Tavily key |
 | `CORS_ORIGINS` | `https://<your-vercel-app>.vercel.app,http://localhost:3000` |
 
-### 3. Push the code
+### 4. Push the code (with data)
+The Space needs the code **plus** the built FAISS index + parquet artefacts
+to start fast. We use a helper script that builds a deploy branch
+including those files (which are gitignored on GitHub).
 
-The Space is itself a git repo. We push the same files we have locally,
-but the Space repo expects an `app/` Docker entrypoint as the project root.
-
-From the project root:
-
+From the project root in PowerShell:
 ```powershell
-# add the HF Space as an additional git remote
-git remote add hf https://huggingface.co/spaces/<your-username>/healthmap-agent
-
-# push (use your HF user-access token as the password when prompted)
-git push hf main
+.\scripts\deploy_hf.ps1 -User <your-hf-username>
 ```
 
-Generate an HF token at https://huggingface.co/settings/tokens (scope: write).
+You'll be prompted for username + password — paste your HF write token
+as the password. The script:
 
-### 4. About data files
+1. Adds the HF Space as a `hf` git remote (idempotent).
+2. Creates a temporary `hf-deploy` branch and force-adds `data/processed`,
+   `data/index`, `data/extracted`.
+3. Force-pushes `hf-deploy → main` on the Space.
+4. Returns you to your original branch.
 
-The FAISS index (`data/index/`), the canonical parquet (`data/processed/`),
-and the extracted capabilities parquet (`data/extracted/`) are gitignored
-locally so they don't bloat your GitHub repo. But the Docker image needs
-them.
+The Space starts building automatically. First build takes ~3 min.
 
-Two options:
-
-**Option A — bake them into the image (simplest, works now):**
-
-Temporarily relax the gitignore for the HF push only:
-
+### 5. Verify
 ```powershell
-git push hf main --force-with-lease
-# then on the HF Space repo, manually upload the data/ folder via the web UI
-```
+curl https://<your-hf-username>-healthmap-agent.hf.space/health
+# {"ok":true}
 
-OR check `data/processed/`, `data/index/`, `data/extracted/` into the
-HF-only branch:
-
-```powershell
-git checkout -b hf-deploy
-# copy a temporary .gitignore that doesn't ignore data/
-git add data/
-git commit -m "deploy: include built artifacts"
-git push hf hf-deploy:main --force
-git checkout main
-```
-
-**Option B — rebuild on first boot (slower, but cleaner):**
-
-Add an entrypoint that runs `python -m scripts.01_ingest && python -m scripts.02_extract_all`
-on container start. This requires uploading the raw `dataset/*.xlsx` to
-the Space (use the HF web UI **Files → Upload file**, or git-LFS).
-
-For the hackathon I recommend **Option A** — fewer moving parts.
-
-### 5. Test
-
-After the Space builds (~3 min), curl it:
-
-```powershell
-curl -X POST https://<your-username>-healthmap-agent.hf.space/query `
+curl -X POST https://<your-hf-username>-healthmap-agent.hf.space/query `
      -H "Content-Type: application/json" `
      -d '{"query":"Find emergency surgery hospital in rural Bihar"}'
 ```
 
-## Frontend → Vercel
+If `/health` works but `/query` returns 503, the Space hasn't received
+the data yet — re-run `scripts\deploy_hf.ps1`.
 
-1. Lovable / v0 produces a Next.js project.
-2. Push it to a GitHub repo (e.g. `healthmap-frontend`).
-3. Import to Vercel.
-4. Set env var `NEXT_PUBLIC_BACKEND_URL=https://<your-username>-healthmap-agent.hf.space`.
+### 6. Re-deploy
+Just run `scripts\deploy_hf.ps1` again whenever you push code or
+rebuild the cache.
+
+---
+
+## Frontend on Vercel
+
+1. Generate the UI (Lovable or v0) using `docs/FRONTEND_PROMPT.md`.
+2. Push the generated Next.js project to a GitHub repo (e.g.
+   `healthmap-frontend`).
+3. https://vercel.com/new → import the repo.
+4. Set env var: `NEXT_PUBLIC_BACKEND_URL=https://<your-hf-username>-healthmap-agent.hf.space`.
 5. Deploy.
-6. Add the Vercel URL to your Space's `CORS_ORIGINS`.
+6. Copy the Vercel URL (e.g. `https://healthmap-agent.vercel.app`)
+   and add it to the Space's `CORS_ORIGINS` secret. The Space will
+   restart automatically.
+
+---
+
+## Local dev (no deploy)
+
+```powershell
+.\.venv\Scripts\activate
+uvicorn backend.app:app --reload --port 8000
+```
+
+Hit http://localhost:8000/docs for the interactive Swagger UI.
