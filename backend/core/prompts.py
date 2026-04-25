@@ -24,12 +24,49 @@ Output ONLY valid JSON with this exact shape:
 Rules:
 - `required_capabilities` must use only these tokens: \
 "icu", "emergency", "surgery", "anesthesiologist", "oxygen".
-- "appendectomy", "trauma", "operation" → "surgery".
-- "casualty", "ER", "24/7 care" → "emergency".
-- "ventilator", "critical care" → "icu".
+- "appendectomy", "trauma", "operation", "OT" → "surgery".
+- "casualty", "ER", "emergency room", "24/7 care" → "emergency".
+- "ventilator", "critical care", "intensive care" → "icu".
+- "anesthesia", "anaesthesiology" → "anesthesiologist".
+- "O2", "oxygen supply", "oxygen support" → "oxygen".
+
+- LOCATION INFERENCE — when the user mentions a city / town only, set
+  `state` to the Indian state that contains it. Use this lookup:
+    Maharashtra: Mumbai, Pune, Nagpur, Nashik, Aurangabad, Thane,
+                 Solapur, Kolhapur, Sangli, Amravati, Nanded, Akola
+    Karnataka:   Bengaluru, Bangalore, Mysuru, Mysore, Mangaluru,
+                 Hubli, Belagavi, Davangere
+    Delhi:       Delhi, New Delhi
+    Bihar:       Patna, Gaya, Muzaffarpur, Hajipur, Motihari, Bhagalpur,
+                 Darbhanga, Purnia, Begusarai, Siwan, Aurangabad-Bihar,
+                 Gopalganj, Rafiganj
+    Rajasthan:   Jaipur, Udaipur, Jodhpur, Ajmer, Bikaner, Kota
+    Uttar Pradesh: Lucknow, Kanpur, Varanasi, Allahabad, Prayagraj,
+                   Agra, Meerut, Ghaziabad, Noida, Gorakhpur,
+                   Bareilly, Aligarh, Mathura
+    Tamil Nadu:  Chennai, Madurai, Coimbatore, Tiruchirappalli, Trichy,
+                 Salem, Tirunelveli, Erode, Vellore
+    West Bengal: Kolkata, Howrah, Siliguri, Asansol, Durgapur
+    Telangana:   Hyderabad, Warangal, Karimnagar, Nizamabad
+    Gujarat:     Ahmedabad, Surat, Vadodara, Rajkot, Bhavnagar, Gandhinagar
+    Kerala:      Kochi, Cochin, Thiruvananthapuram, Trivandrum,
+                 Kozhikode, Calicut, Thrissur, Kollam, Alappuzha
+    Punjab:      Ludhiana, Amritsar, Jalandhar, Patiala
+    Haryana:     Faridabad, Gurugram, Gurgaon, Rohtak, Hisar, Karnal
+    Madhya Pradesh: Bhopal, Indore, Gwalior, Jabalpur, Ujjain
+    Andhra Pradesh: Visakhapatnam, Vijayawada, Guntur, Tirupati
+    Odisha:      Bhubaneswar, Cuttack, Rourkela
+    Jharkhand:   Ranchi, Jamshedpur, Dhanbad, Bokaro
+    Assam:       Guwahati, Dibrugarh, Silchar
+    Chhattisgarh: Raipur, Bhilai
+    Uttarakhand: Dehradun, Haridwar
+    Chandigarh:  Chandigarh
+  When you fill `state` from a city, ALSO set `district` to that city.
+
 - `rural` is true ONLY if the query explicitly says "rural", "village",
-  or names a known rural area. Otherwise null.
-- `constraints` captures other requirements verbatim (e.g. "part-time doctors").
+  or names a small/known-rural area. Otherwise null.
+- `constraints` captures other requirements verbatim (e.g. "part-time doctors",
+  "tertiary care", "within 50 km").
 
 Query: {query}
 
