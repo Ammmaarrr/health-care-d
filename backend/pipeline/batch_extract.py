@@ -44,6 +44,7 @@ def _process_row(row: dict) -> dict:
         "district": row.get("district"),
         "pin": row.get("pin"),
         "rural": row.get("rural"),
+        "facility_type": row.get("facility_type"),
         "has_icu": cap.has_icu,
         "has_emergency": cap.has_emergency,
         "has_surgery": cap.has_surgery,

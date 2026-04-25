@@ -46,13 +46,12 @@ def validate(
     if use_llm and parsed.required_capabilities:
         standards = _gather_standards(parsed.required_capabilities)
         try:
-            raw = chat_json(
-                VALIDATOR_PROMPT.format(
-                    capabilities=cap.model_dump_json(),
-                    standards=standards[:3000],
-                ),
-                max_tokens=500,
+            prompt_text = (
+                VALIDATOR_PROMPT
+                .replace("{capabilities}", cap.model_dump_json())
+                .replace("{standards}", standards[:3000])
             )
+            raw = chat_json(prompt_text, max_tokens=500)
             for it in raw.get("issues", []) or []:
                 issues.append(
                     ValidatorIssue(

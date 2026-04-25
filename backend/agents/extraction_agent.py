@@ -26,7 +26,7 @@ def extract_one(notes: str) -> tuple[Capabilities, Evidence]:
         return Capabilities(), Evidence()
 
     raw: dict[str, Any] = chat_json(
-        EXTRACT_PROMPT.format(notes=notes[:6000]),  # safety truncate
+        EXTRACT_PROMPT.replace("{notes}", notes[:6000]),  # safety truncate
         max_tokens=600,
     )
     cap_fields = {k: raw.get(k) for k in Capabilities.model_fields if raw.get(k) is not None}

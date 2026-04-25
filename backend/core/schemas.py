@@ -90,6 +90,14 @@ class Location(BaseModel):
     district: str | None = None
     pin: str | None = None
     rural: bool | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class HospitalMeta(BaseModel):
+    """Non-clinical metadata returned per result."""
+
+    facility_type: str | None = None  # hospital, clinic, dentist, pharmacy, doctor
 
 
 # --------------------------------------------------------------------------- #
@@ -99,6 +107,7 @@ class HospitalResult(BaseModel):
     facility_id: str
     name: str
     location: Location
+    meta: HospitalMeta = Field(default_factory=HospitalMeta)
     capabilities: Capabilities
     trust_score: float
     flags: list[str] = Field(default_factory=list)

@@ -10,6 +10,6 @@ from backend.core.schemas import ParsedQuery
 
 
 def parse_query(query: str) -> ParsedQuery:
-    raw = chat_json(QUERY_PROMPT.format(query=query), max_tokens=400)
+    raw = chat_json(QUERY_PROMPT.replace("{query}", query), max_tokens=400)
     # Pydantic ignores unknown keys, fills defaults for missing ones.
     return ParsedQuery(**{k: v for k, v in raw.items() if k in ParsedQuery.model_fields})

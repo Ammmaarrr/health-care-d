@@ -81,6 +81,6 @@ def score(
 
     flags = [i.issue for i in validator.issues]
     if breakdown.completeness < 0.4:
-        flags.append("Sparse data — many fields uncertain.")
+        flags.append("Sparse data - many fields uncertain.")
 
     return TrustResult(trust_score=round(final, 3), flags=flags, breakdown=breakdown)

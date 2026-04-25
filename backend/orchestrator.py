@@ -16,6 +16,7 @@ from backend.core import mlflow_setup
 from backend.core.schemas import (
     Capabilities,
     Evidence,
+    HospitalMeta,
     HospitalResult,
     Location,
     QueryResponse,
@@ -23,13 +24,37 @@ from backend.core.schemas import (
 )
 
 
+def _g(row, key, default=None):
+    """Safe pandas-Series.get-or-getattr wrapper."""
+    try:
+        v = row.get(key, default) if hasattr(row, "get") else getattr(row, key, default)
+    except Exception:
+        v = default
+    if v is None:
+        return None
+    # pandas can give us numpy NaN that isn't None.
+    try:
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            return None
+    except Exception:
+        pass
+    return v
+
+
 def _row_location(row) -> Location:
     return Location(
-        state=row.get("state") if hasattr(row, "get") else getattr(row, "state", None),
-        district=row.get("district") if hasattr(row, "get") else getattr(row, "district", None),
-        pin=str(row.get("pin")) if hasattr(row, "get") and row.get("pin") is not None else None,
-        rural=bool(row.get("rural")) if hasattr(row, "get") and row.get("rural") is not None else None,
+        state=_g(row, "state"),
+        district=_g(row, "district"),
+        pin=str(_g(row, "pin")) if _g(row, "pin") is not None else None,
+        rural=bool(_g(row, "rural")) if _g(row, "rural") is not None else None,
+        latitude=float(_g(row, "latitude")) if _g(row, "latitude") is not None else None,
+        longitude=float(_g(row, "longitude")) if _g(row, "longitude") is not None else None,
     )
+
+
+def _row_meta(row) -> HospitalMeta:
+    return HospitalMeta(facility_type=_g(row, "facility_type"))
 
 
 def _row_dict(row) -> dict:
@@ -95,8 +120,9 @@ def run(query: str, *, top_k: int = 8) -> QueryResponse:
             v = validator_agent.validate(cap, parsed, use_llm=False)
             trust = trust_agent.score(cap, ev, v)
             location = _row_location(row)
+            meta = _row_meta(row)
             reasoning = trace_agent.explain_hospital(
-                name=str(row.get("name", "Unknown")),
+                name=str(_g(row, "name", "Unknown")),
                 location=location.model_dump(),
                 cap=cap,
                 validator=v,
@@ -109,11 +135,13 @@ def run(query: str, *, top_k: int = 8) -> QueryResponse:
                 if getattr(ev, k)
             }
 
+            fid = str(_g(row, "facility_id", f"row-{idx}"))
             results.append(
                 HospitalResult(
-                    facility_id=str(row.get("facility_id", f"row-{idx}")),
-                    name=str(row.get("name", "Unknown")),
+                    facility_id=fid,
+                    name=str(_g(row, "name", "Unknown")),
                     location=location,
+                    meta=meta,
                     capabilities=cap,
                     trust_score=trust.trust_score,
                     flags=trust.flags,
@@ -122,7 +150,7 @@ def run(query: str, *, top_k: int = 8) -> QueryResponse:
                 )
             )
             validator_findings.append({
-                "facility_id": str(row.get("facility_id", f"row-{idx}")),
+                "facility_id": fid,
                 "issues": [i.model_dump() for i in v.issues],
                 "trust": trust.breakdown.model_dump(),
             })

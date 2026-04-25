@@ -9,52 +9,67 @@ from backend.core.schemas import Capabilities, ValidatorIssue
 
 
 def check_contradictions(c: Capabilities) -> list[ValidatorIssue]:
-    """Return a list of issues found purely from rule logic."""
+    """Return a list of issues found purely from rule logic.
+
+    Severity grading distinguishes:
+    - HIGH: a claimed capability + an *explicitly missing* prerequisite.
+            (Hospital says "yes" to surgery and "no" to anesthesiologist.)
+    - MEDIUM: a claimed capability + an *unconfirmed* prerequisite.
+              (Hospital says "yes" to surgery and "uncertain" on anesthesiologist.)
+    - LOW: weaker signal of the same.
+
+    This way "uncertain" data doesn't crater the trust score the same way
+    explicit contradictions do.
+    """
     issues: list[ValidatorIssue] = []
 
-    # Surgery without anesthesiologist is a hard fail.
+    # Surgery requires anesthesiologist.
     if c.has_surgery == "yes" and c.has_anesthesiologist != "yes":
+        sev = "high" if c.has_anesthesiologist == "no" else "medium"
         issues.append(
             ValidatorIssue(
                 capability="surgery",
                 issue=(
-                    "Surgery is claimed but anesthesiologist is "
+                    f"Surgery is claimed but anesthesiologist is "
                     f"'{c.has_anesthesiologist}'. Surgery requires anesthesia coverage."
                 ),
-                severity="high",
+                severity=sev,
             )
         )
 
-    # Surgery requires oxygen too.
-    if c.has_surgery == "yes" and c.has_oxygen == "no":
+    # Surgery requires oxygen.
+    if c.has_surgery == "yes" and c.has_oxygen != "yes":
+        sev = "high" if c.has_oxygen == "no" else "low"
         issues.append(
             ValidatorIssue(
                 capability="surgery",
-                issue="Surgery claimed without oxygen supply on record.",
-                severity="high",
+                issue=f"Surgery claimed but oxygen is '{c.has_oxygen}'.",
+                severity=sev,
             )
         )
 
-    # Emergency without oxygen is suspicious.
+    # Emergency care requires oxygen.
     if c.has_emergency == "yes" and c.has_oxygen != "yes":
+        sev = "high" if c.has_oxygen == "no" else "medium"
         issues.append(
             ValidatorIssue(
                 capability="emergency",
                 issue=(
-                    "Emergency care is claimed but oxygen is "
+                    f"Emergency care is claimed but oxygen is "
                     f"'{c.has_oxygen}'. Emergency care requires reliable oxygen."
                 ),
-                severity="medium" if c.has_oxygen == "uncertain" else "high",
+                severity=sev,
             )
         )
 
-    # ICU without explicit critical-care signals is weak.
+    # ICU without oxygen signals is weak.
     if c.has_icu == "yes" and c.has_oxygen != "yes":
+        sev = "high" if c.has_oxygen == "no" else "low"
         issues.append(
             ValidatorIssue(
                 capability="icu",
-                issue="ICU claimed but oxygen support not confirmed.",
-                severity="medium",
+                issue=f"ICU claimed but oxygen support is '{c.has_oxygen}'.",
+                severity=sev,
             )
         )
 
@@ -62,7 +77,12 @@ def check_contradictions(c: Capabilities) -> list[ValidatorIssue]:
 
 
 def severity_to_adjustment(issues: list[ValidatorIssue]) -> float:
-    """Map validator issues to a confidence adjustment in [-0.5, 0]."""
-    weight = {"low": 0.05, "medium": 0.15, "high": 0.30}
+    """Map validator issues to a confidence adjustment.
+
+    Range: [-0.35, 0]. Even multiple high-severity issues bottom out
+    at -0.35 so a partially-validated facility never goes to a score
+    of literal zero from validation alone.
+    """
+    weight = {"low": 0.03, "medium": 0.10, "high": 0.20}
     total = sum(weight[i.severity] for i in issues)
-    return max(-0.5, -total)
+    return max(-0.35, -total)
