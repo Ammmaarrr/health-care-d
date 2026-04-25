@@ -1,25 +1,25 @@
 # Build Plan — Healthmap Agent
 
-Single source of truth for the 14-hour hackathon build. Update as we go.
+Single source of truth for the 14-hour hackathon build. Updated as we go.
 
 ---
 
 ## 0. Constraints
 - **Time:** 14 hours total.
 - **LLM budget:** ~$4.50 in OpenAI credits.
-- **Provider plan:** OpenAI `gpt-4o-mini` for reasoning, `text-embedding-3-small` for vectors. Architecture stays provider-agnostic via OpenAI-compatible client (we can swap to Groq/Together by changing one env var).
-- **Data scale:** 10,000 rows. We process a **stratified sample of 1,000** for the demo to stay well within budget + rate limits. Full 10k toggle exists (`EXTRACTION_SAMPLE_SIZE=0`).
+- **Provider:** OpenAI `gpt-4o-mini` for reasoning, `text-embedding-3-small` for vectors. Architecture stays provider-agnostic via OpenAI-compatible client.
+- **Data scale:** 10,000 rows. Demo runs on the **2,789 hospitals** (where ICU/surgery/emergency questions actually have answers). Toggle via `--types` flag on the batch script.
 - **Deploy:** backend on Hugging Face Spaces (Docker), frontend on Vercel.
 
-## 1. Cost / rate-limit budget
-| Step | Tokens | Est. cost |
-|---|---|---|
-| Embeddings 10k rows × ~300 tok | 3M | ~$0.06 |
-| Batch extraction 1k rows × (600 in + 250 out) tok | 850k | ~$0.25 |
-| Batch extraction 10k rows (full)| 8.5M | ~$2.50 |
-| Query-time agents (~100 demos × ~2k tok) | ~200k | ~$0.10 |
-| **Total demo path (1k sample + 100 queries)** | | **~$0.41** |
-| **Total full path (10k + 100 queries)** | | **~$2.66** |
+## 1. Cost / rate-limit budget — actual spent
+| Step | Tokens | Est. cost | Status |
+|---|---|---|---|
+| Embeddings 10k rows | 1.5M | ~$0.03 | ✅ done |
+| Batch extraction 1k stratified sample | 850k | ~$0.20 | ✅ done |
+| Batch extraction all 2,789 hospitals (running) | ~2M | ~$0.65 | ⏳ in progress |
+| Per-query agents (live testing) | ~50k | ~$0.05 | ✅ done |
+| **Total spent so far** | | **~$0.93** | |
+| **Budget remaining** | | **~$3.55** | |
 
 Comfortably inside $4.50.
 
@@ -28,125 +28,79 @@ Comfortably inside $4.50.
 Frontend (Lovable/v0 → Vercel)
         │  POST {BACKEND_URL}/query
         ▼
-FastAPI on Hugging Face Spaces
+FastAPI on Hugging Face Spaces (Docker, port 7860)
         │
         ▼ orchestrator.py
    ┌────┴────┐
    1. QueryAgent           — NL → structured intent (LLM)
    2. RetrievalAgent       — FAISS top-K + structured filters (state, rural)
-   3. ExtractionAgent      — lookup pre-extracted JSON for top-K
-   4. ReasoningAgent       — match capabilities to query, rank
-   5. ValidatorAgent       — Tavily standards + rule engine, contradiction flags
-   6. TrustAgent           — composite 0–1 score + flags
-   7. TraceAgent           — human-readable reasoning string
+   3. ExtractionAgent      — disk + memory cache, parallel live fallback
+   4. ValidatorAgent       — Tavily standards (cached) + rule engine
+   5. TrustAgent           — completeness × consistency × validator × evidence
+   6. ReasoningAgent       — combined ranking: 0.6*match + 0.4*trust
+   7. TraceAgent           — per-hospital LLM reasoning + structured Trace
    └────┬────┘
-        │ MLflow run (logs every step)
+        │ MLflow run (one per /query)
         ▼
         JSON response
-
-Offline (run once via scripts/):
-   load.py → preprocess.py → embed.py → batch_extract.py
 ```
 
-## 3. API contract (frozen — frontend builds against this)
-```
-POST /query
-Request: { "query": string }
-Response: {
-  "results": [{
-    "facility_id": string,
-    "name": string,
-    "location": { "state": string, "district": string, "pin": string, "rural": boolean },
-    "capabilities": {
-      "has_icu":            "yes" | "no" | "uncertain",
-      "has_emergency":      "yes" | "no" | "uncertain",
-      "has_surgery":        "yes" | "no" | "uncertain",
-      "has_anesthesiologist":"yes" | "no" | "uncertain",
-      "has_oxygen":         "yes" | "no" | "uncertain",
-      "doctor_type":        "full-time" | "part-time" | "unknown"
-    },
-    "trust_score": number,                        // 0..1
-    "flags": string[],                            // e.g. "Surgery claimed but no anesthesiologist"
-    "evidence": { [capability: string]: string }, // exact sentence from notes
-    "reasoning": string
-  }],
-  "trace": {
-    "parsed_query": object,
-    "retrieved_ids": string[],
-    "validator_findings": object[],
-    "trust_breakdown": object,
-    "steps": string[]                             // ordered narrative
-  }
-}
-
-GET /desert-map
-Response: { gaps_by_state: [{ state, missing_capability, count, total }] }
-
-GET /health
-Response: { ok: true }
-```
-
-## 4. 14-hour timeline
-| H | Task | Deliverable | Status |
+## 3. Build progress (ahead of schedule)
+| H | Task | Status | Deliverable |
 |---|---|---|---|
-| 0–1 | Scaffold repo, push, install deps, dataset peek | repo on GitHub, `data/processed/hospitals.parquet` | ✅ scaffold done |
-| 1–2 | FAISS index + RetrievalAgent CLI | `data/index/faiss.index` + working `python -m backend.agents.retrieval_agent "icu rural bihar"` | ⏳ |
-| 2–3 | ExtractionAgent + start batch (1k sample) | `data/extracted/capabilities.parquet` populating in background | ⏳ |
-| 3–5 | QueryAgent + ReasoningAgent + `/query` end-to-end | curl works, returns ranked results | ⏳ |
-| 5–7 | ValidatorAgent (Tavily cache) + TrustAgent + TraceAgent + MLflow | full reasoning chain visible in MLflow UI | ⏳ |
-| 7–8 | `/desert-map` aggregation | endpoint returns PIN-level gap data | ⏳ |
-| 8–9 | Dockerfile + push to HF Space | live backend URL | ⏳ |
-| 9–11 | Lovable/v0 frontend wired to live backend, CORS fix | working demo on vercel.app | ⏳ |
-| 11–13 | Polish: gauge UI, MLflow screenshots for deck | demo-ready | ⏳ |
-| 13–14 | Buffer / rehearsal | submission | ⏳ |
+| 0–1 | Scaffold, push, deps | ✅ | repo on GitHub, venv, all deps installed |
+| 1–2 | Canonicalize 10k → parquet, FAISS index, retrieval | ✅ | `data/processed/hospitals.parquet`, `data/index/faiss.index` |
+| 2–3 | ExtractionAgent + 1000-row stratified sample | ✅ | `data/extracted/capabilities.parquet` |
+| 3–5 | Query/Reasoning/Validator/Trust/Trace agents + `/query` | ✅ | end-to-end live: 10s cached, 17s cold |
+| 5–7 | MLflow tracing + Tavily caching + medical rules | ✅ | mlruns/ logged per query, tavily_cache/ active |
+| 7–8 | `/desert-map` with min_total filter | ✅ | endpoint live, returns gap_ratio per state |
+| 8–9 | Dockerfile + HF Spaces deploy script | ✅ | `scripts/deploy_hf.ps1` ready |
+| 8–9 | **Wider batch over all 2,789 hospitals** | ⏳ | running in background |
+| 9–11 | Lovable/v0 frontend wired to live backend | ⏳ | waiting on user action |
+| 11–13 | Polish: gauge UI, MLflow screenshots | ⏳ | |
+| 13–14 | Demo rehearsal | ⏳ | |
+
+## 4. What works right now
+- `POST /query` with full 7-agent pipeline, parallel LLM calls, MLflow run per query.
+- `GET /desert-map?min_total=30` aggregating capability gaps by state.
+- `GET /health` smoke endpoint.
+- Auto Swagger UI at `/docs`.
+- Trust gap demonstrably working: "Find emergency surgery in rural Bihar" returns
+  `Jindal Hospital And Endo Surgery Center` (anesthesiologist verified, trust 0.645)
+  ranked above `Jalal Medical Center` (anesthesiologist uncertain, trust 0.235).
 
 ## 5. Cut order if we fall behind
-1. `/desert-map` (drop first)
+1. /desert-map (drop first)
 2. MLflow tracing (replace with simple JSON log)
-3. Tavily validation (replace with hardcoded medical rules from `core/medical_rules.py`)
-4. Sample size → 200 rows
-5. Skip Lovable, use a basic Streamlit UI as fallback
+3. Tavily LLM-validation layer (already replaced by `medical_rules.py` rule engine)
+4. Lovable → fall back to Streamlit/Gradio in `backend/app.py` mount
 
-## 6. Prompts (canonical, copy-paste from `backend/core/prompts.py`)
-All five LLM prompts live in one file so we can iterate quickly:
-1. `QUERY_PROMPT` — NL → structured intent
-2. `EXTRACT_PROMPT` — hospital notes → capability JSON (strict, conservative)
-3. `VALIDATOR_PROMPT` — capabilities + standards → contradictions
-4. `RANK_PROMPT` — short reasoning per hospital (used by ReasoningAgent)
-5. `TRACE_PROMPT` — raw trace → human-readable explanation
-
-## 7. Risks + mitigations
-| Risk | Mitigation |
-|---|---|
-| OpenAI rate limit during batch | small concurrency (5–10 workers); resumable batch (skip rows already in parquet) |
-| Tavily flakiness | local disk cache; fall back to `medical_rules.py` |
-| Dataset column names differ from assumed | `pipeline/load.py` does a column-discovery pass first; we adapt before hard-coding |
-| HF Space cold start slow | warm-up ping in frontend on page load |
-| Lovable produces broken UI | mock data in `frontend/lib/mock.ts` so demo never blanks |
-| Python 3.13 wheel issues | fall back to `py -3.12 -m venv .venv` if `faiss-cpu`/`sentence-transformers` choke |
-
-## 8. Open decisions (none blocking)
-- [x] LLM provider: **OpenAI** (locked)
-- [x] Embeddings: **OpenAI text-embedding-3-small** (locked, cheap enough)
-- [x] Backend host: **HF Spaces** (locked)
-- [ ] Frontend tool: Lovable vs v0 — user decides when ready
-- [ ] Sample size: default 1000, easy to bump
-
-## 9. Eval criteria → where we score
-| Criterion (weight) | Where it shows up |
-|---|---|
-| Discovery & Verification (35%) | ExtractionAgent's conservative `uncertain` policy; ValidatorAgent contradiction flags; double-check loop |
-| IDP Innovation (30%) | Hybrid retrieval + LLM extraction with evidence sentence per capability |
-| Social Impact (25%) | `/desert-map` PIN-level gap aggregation |
-| UX & Transparency (10%) | TraceAgent + MLflow per-query run + collapsible reasoning UI in frontend |
-
-## 10. Things I (the user) need to do
+## 6. Things the user needs to do
 - [x] Provide OpenAI key
 - [x] Provide Tavily key
-- [ ] Create Hugging Face account + Space (when prompted at hour 8)
-- [ ] Run Lovable/v0 with the prompt below at hour 9
-- [ ] Deploy frontend to Vercel
-- [ ] **Rotate both API keys after the hackathon** (they were pasted in chat)
+- [ ] Sign up at https://huggingface.co (if not already)
+- [ ] Generate an HF write token at https://huggingface.co/settings/tokens
+- [ ] Create the Space at https://huggingface.co/new-space (Docker SDK, free CPU)
+- [ ] Run `.\scripts\deploy_hf.ps1 -User <your-hf-username>`
+- [ ] Add `OPENAI_API_KEY`, `TAVILY_API_KEY`, `CORS_ORIGINS` as Space secrets
+- [ ] Get Lovable/v0 credits → run prompt from `docs/FRONTEND_PROMPT.md`
+- [ ] Push generated frontend to GitHub → import to Vercel
+- [ ] Set Vercel env `NEXT_PUBLIC_BACKEND_URL` to the Space URL
+- [ ] **Rotate OpenAI + Tavily keys after the demo** (they were pasted in chat)
 
-## 11. Lovable/v0 prompt (locked)
-See `docs/FRONTEND_PROMPT.md` (will be created at hour 9, but the prompt is already drafted in the previous chat turn).
+## 7. Eval criteria → how we score
+| Criterion (weight) | Where it shows up |
+|---|---|
+| Discovery & Verification (35%) | ExtractionAgent's conservative `uncertain` policy + value normalizer; ValidatorAgent rule-engine + (optional) LLM cross-check; resumable batch with consistency hash |
+| IDP Innovation (30%) | Hybrid retrieval (FAISS + structured filter); per-capability evidence sentence in response |
+| Social Impact (25%) | `/desert-map` with PIN/state aggregation, configurable `min_total`, ready-to-render gap_ratio |
+| UX & Transparency (10%) | TraceAgent reasoning per result + structured Trace + MLflow per-query run with metrics |
+
+## 8. Known limitations (will note in demo)
+- Demo runs on a 2,789-hospital subset (skips dentists/pharmacies).
+  Full 10k extraction works but takes 75 min on free-tier rate limits.
+- The dataset has some city names where `address_stateOrRegion` should be a state
+  (e.g. "Aurangabad-bihar"); we surface the field as-is and let `min_total` filter
+  hide the noise.
+- `validator_agent.use_llm=False` by default to keep `/query` fast.
+  Tavily standards still get cached on first use.
