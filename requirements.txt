@@ -1,0 +1,29 @@
+# --- core data ---
+pandas>=2.2
+numpy>=1.26
+openpyxl>=3.1            # to read the .xlsx dataset
+pyarrow>=15              # parquet
+tqdm>=4.66
+python-dotenv>=1.0
+pydantic>=2.7
+pydantic-settings>=2.3
+
+# --- LLM + embeddings ---
+openai>=1.40             # OpenAI-compatible client (works for OpenAI, Groq, Together)
+tiktoken>=0.7
+
+# --- vector search ---
+faiss-cpu>=1.8
+
+# --- web search / validation ---
+tavily-python>=0.3
+
+# --- API server ---
+fastapi>=0.110
+uvicorn[standard]>=0.30
+
+# --- tracing ---
+mlflow>=2.13
+
+# --- dev / nice-to-haves ---
+rich>=13.7
