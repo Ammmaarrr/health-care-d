@@ -101,5 +101,8 @@ def run_batch(
     if out.exists():
         prior = pd.read_parquet(out)
         new_df = pd.concat([prior, new_df], ignore_index=True)
+    # Dedup by facility_id (last-write-wins) so a re-run never blows up the file.
+    if "facility_id" in new_df.columns:
+        new_df = new_df.drop_duplicates(subset="facility_id", keep="last").reset_index(drop=True)
     new_df.to_parquet(out)
     return out
