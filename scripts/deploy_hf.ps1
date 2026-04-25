@@ -1,15 +1,18 @@
-# Push to Hugging Face Spaces (Docker SDK).
+# Push to Hugging Face Spaces (Docker SDK) using a sibling git worktree.
 #
 # Usage:
 #   .\scripts\deploy_hf.ps1 -User <hf-username> -Token <hf-write-token>
 #
 # Requires: git-lfs installed (https://git-lfs.com).
 #
-# This creates a temporary 'hf-deploy' branch that:
-#  - Sets up Git LFS for *.index and *.parquet (HF rejects raw binaries).
-#  - Force-adds the built data/ artefacts that are normally gitignored.
-#  - Pushes to the Space's main branch.
-# It then returns to your original branch and deletes the deploy branch.
+# How it works:
+# 1. Adds a sibling git worktree at ..\healthmap-hf-deploy on a new
+#    'hf-deploy' branch. Your main working tree is NEVER touched.
+# 2. Inside the worktree, copies the built data/ artefacts (parquet,
+#    faiss.index) from your main working tree, sets up Git LFS, and
+#    commits.
+# 3. Force-pushes the worktree branch to the Space's main branch.
+# 4. Removes the sibling worktree + branch.
 
 param(
     [Parameter(Mandatory=$true)] [string]$User,
@@ -19,46 +22,86 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Confirm git-lfs is available.
 $lfsCheck = git lfs version 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Error "git-lfs is not installed. Install from https://git-lfs.com first."
     exit 1
 }
 
-$origBranch = git rev-parse --abbrev-ref HEAD
+# Verify the data we want to deploy actually exists.
+$mustExist = @(
+    "data\processed\hospitals.parquet",
+    "data\index\faiss.index",
+    "data\index\faiss_meta.parquet",
+    "data\extracted\capabilities.parquet"
+)
+foreach ($f in $mustExist) {
+    if (-not (Test-Path $f)) {
+        Write-Error "Missing required deploy artefact: $f. Run 'scripts\01_ingest.py' and 'scripts\02_extract_all.py' first."
+        exit 1
+    }
+}
+
+$repoRoot = (Resolve-Path .).Path
+$worktreeDir = Join-Path (Split-Path $repoRoot -Parent) "healthmap-hf-deploy"
+
 Write-Host "Deploying to https://huggingface.co/spaces/$User/$Space" -ForegroundColor Cyan
-Write-Host "Original branch: $origBranch"
 
-# Ensure LFS is initialized in this repo.
-git lfs install --local | Out-Null
+# Clean up any leftover worktree from a previous run.
+if (Test-Path $worktreeDir) {
+    Write-Host "Cleaning up previous worktree at $worktreeDir"
+    git worktree remove --force $worktreeDir 2>$null | Out-Null
+    if (Test-Path $worktreeDir) { Remove-Item -Recurse -Force $worktreeDir }
+}
+# Also drop a stale local branch if present.
+$existing = git branch --list hf-deploy
+if ($existing) { git branch -D hf-deploy | Out-Null }
 
-# Build a fresh deploy branch.
-git checkout -B hf-deploy
+# Create worktree on a fresh branch starting from current HEAD.
+git worktree add -B hf-deploy $worktreeDir HEAD | Out-Null
 
-# Track binaries via LFS so the Space repo accepts them.
-git lfs track "*.index" | Out-Null
-git lfs track "*.parquet" | Out-Null
-git add .gitattributes
+try {
+    Push-Location $worktreeDir
 
-# Force-add the built artefacts (these are .gitignored on GitHub).
-git add -f data/processed data/index data/extracted
+    # LFS for binaries.
+    git lfs install --local | Out-Null
+    git lfs track "*.index"   | Out-Null
+    git lfs track "*.parquet" | Out-Null
+    git add .gitattributes
 
-git commit -m "deploy: include built data + LFS tracking for *.index, *.parquet" --allow-empty | Out-Null
+    # Copy the built artefacts INTO the worktree, then add them.
+    foreach ($f in $mustExist) {
+        $src = Join-Path $repoRoot $f
+        $dst = Join-Path $worktreeDir $f
+        New-Item -ItemType Directory -Force (Split-Path $dst -Parent) | Out-Null
+        Copy-Item $src $dst -Force
+    }
+    git add -f data/processed data/index data/extracted
 
-# One-shot push using credentials embedded in URL (not persisted as a remote).
-$pushUrl = "https://${User}:${Token}@huggingface.co/spaces/${User}/${Space}"
-git push $pushUrl hf-deploy:main --force
+    # Sanity check: at least one of the parquet/index files must be staged.
+    $staged = git diff --cached --name-only
+    if (-not ($staged -match "data/.+\.(parquet|index)$")) {
+        throw "Nothing staged under data/. Aborting deploy."
+    }
 
-# Cleanup: return to original branch and remove deploy branch.
-git checkout $origBranch | Out-Null
-git branch -D hf-deploy | Out-Null
+    git commit -m "deploy: built FAISS + parquet artefacts via LFS" --allow-empty | Out-Null
+
+    $pushUrl = "https://${User}:${Token}@huggingface.co/spaces/${User}/${Space}"
+    git push $pushUrl hf-deploy:main --force
+}
+finally {
+    Pop-Location
+    # Clean up worktree + branch.
+    git worktree remove --force $worktreeDir 2>$null | Out-Null
+    if (Test-Path $worktreeDir) { Remove-Item -Recurse -Force $worktreeDir -ErrorAction SilentlyContinue }
+    git branch -D hf-deploy 2>$null | Out-Null
+}
 
 Write-Host ""
-Write-Host "Done. Space will rebuild at:" -ForegroundColor Green
+Write-Host "Done. Space rebuilding at:" -ForegroundColor Green
 Write-Host "  https://huggingface.co/spaces/$User/$Space"
 Write-Host ""
-Write-Host "REMEMBER to set Space secrets in Settings -> Variables and secrets:" -ForegroundColor Yellow
+Write-Host "Secrets (already set if you ran scripts\set_hf_secrets.py):" -ForegroundColor Yellow
 Write-Host "  OPENAI_API_KEY"
 Write-Host "  TAVILY_API_KEY"
-Write-Host "  CORS_ORIGINS  (e.g. https://your-frontend.vercel.app,http://localhost:3000)"
+Write-Host "  CORS_ORIGINS"
