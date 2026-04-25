@@ -39,18 +39,25 @@ def _structured_filter(meta: pd.DataFrame, parsed: ParsedQuery) -> pd.Series:
 def retrieve(parsed: ParsedQuery, query_text: str, *, top_k: int = 10) -> pd.DataFrame:
     index, meta = _load_index()
 
-    # Vector search.
+    # Vector search a wide net so structured filtering still leaves room.
     qvec = np.array(embed([query_text])[0], dtype="float32")[None, :]
     faiss.normalize_L2(qvec)
-    # Search a wider net so we have enough rows after filtering.
-    scores, idx = index.search(qvec, top_k * 5)
+    scores, idx = index.search(qvec, top_k * 8)
     candidates = meta.iloc[idx[0]].copy()
     candidates["_score"] = scores[0]
 
     # Apply structured filter.
     mask = _structured_filter(candidates, parsed)
     filtered = candidates[mask]
+
+    # If the user pinned a state and we found ANY matches there, return
+    # only those — even if fewer than top_k. This avoids "Maharashtra"
+    # results leaking into a "rural Bihar" query.
+    if parsed.state and len(filtered) > 0:
+        return filtered.head(top_k).reset_index(drop=True)
+
     if len(filtered) < top_k:
-        # Fall back to unfiltered candidates so we always return something.
+        # No state pinned (or zero matches): fall back to the wider net so
+        # we always return something useful.
         filtered = candidates
     return filtered.head(top_k).reset_index(drop=True)
