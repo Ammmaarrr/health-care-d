@@ -11,6 +11,8 @@ Output schema (locked, used by everything downstream):
     latitude       float | None
     longitude      float | None
     facility_type  str | None     ('hospital','clinic','dentist',...)
+    phone          str | None    E.164-ish, from officialPhone / phone_numbers
+    email          str | None    from email column
     notes          str            merged free-text field, the source of truth
                                   for ExtractionAgent
 """
@@ -25,7 +27,7 @@ from backend.config import settings
 
 REQUIRED_OUT_COLUMNS = (
     "facility_id", "name", "state", "district", "pin", "rural",
-    "latitude", "longitude", "facility_type", "notes",
+    "latitude", "longitude", "facility_type", "phone", "email", "notes",
 )
 
 
@@ -100,6 +102,73 @@ def _is_rural(city: object) -> bool | None:
     return str(city).strip().lower() not in _URBAN_CITIES
 
 
+def _clean_official_phone(val: object) -> str | None:
+    """Excel `officialPhone` is often a large int (e.g. 919392803399)."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    try:
+        n = int(float(val))
+    except (ValueError, TypeError):
+        return None
+    s = str(n)
+    if len(s) < 10:
+        return None
+    # India: 91 + 10 digits
+    if s.startswith("91") and len(s) >= 12:
+        return "+" + s
+    if len(s) == 10:
+        return "+91" + s
+    return "+" + s
+
+
+def _first_from_phone_numbers(val: object) -> str | None:
+    """`phone_numbers` is often a JSON-like list string: '["+9193..."]'."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    if isinstance(val, (list, tuple)) and val:
+        return _normalize_phone_token(str(val[0]).strip())
+    s = str(val).strip()
+    if not s or s.lower() == "nan":
+        return None
+    try:
+        parsed = ast.literal_eval(s)
+        if isinstance(parsed, list) and parsed:
+            return _normalize_phone_token(str(parsed[0]).strip())
+    except (ValueError, SyntaxError):
+        pass
+    return _normalize_phone_token(s)
+
+
+def _normalize_phone_token(s: str) -> str | None:
+    s = s.strip()
+    if not s:
+        return None
+    if s.startswith("+"):
+        return s
+    digits = "".join(c for c in s if c.isdigit())
+    if len(digits) == 10:
+        return "+91" + digits
+    if len(digits) >= 10:
+        return "+" + digits
+    return None
+
+
+def _row_phone(row: pd.Series) -> str | None:
+    p = _clean_official_phone(row.get("officialPhone"))
+    if p:
+        return p
+    return _first_from_phone_numbers(row.get("phone_numbers"))
+
+
+def _clean_email(val: object) -> str | None:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    s = str(val).strip()
+    if not s or s.lower() == "nan" or "@" not in s:
+        return None
+    return s
+
+
 def canonicalize(raw: pd.DataFrame) -> pd.DataFrame:
     """Map VF columns → our canonical schema."""
     out = pd.DataFrame()
@@ -112,5 +181,7 @@ def canonicalize(raw: pd.DataFrame) -> pd.DataFrame:
     out["latitude"] = raw["latitude"]
     out["longitude"] = raw["longitude"]
     out["facility_type"] = raw["facilityTypeId"].astype(str).str.strip().replace({"nan": None})
+    out["phone"] = raw.apply(_row_phone, axis=1)
+    out["email"] = raw["email"].map(_clean_email)
     out["notes"] = raw.apply(_build_notes, axis=1)
     return out

@@ -203,6 +203,8 @@ def run(query: str, *, top_k: int = 5, retrieve_k: int = 15) -> QueryResponse:
             }
 
             fid = str(_g(row, "facility_id", f"row-{idx}"))
+            phone = _g(row, "phone")
+            em = _g(row, "email")
             results.append(
                 HospitalResult(
                     facility_id=fid,
@@ -214,6 +216,8 @@ def run(query: str, *, top_k: int = 5, retrieve_k: int = 15) -> QueryResponse:
                     flags=trust.flags,
                     evidence=evidence_dict,
                     reasoning=reasoning,
+                    phone=str(phone).strip() if phone else None,
+                    email=str(em).strip() if em else None,
                 )
             )
             validator_findings.append({

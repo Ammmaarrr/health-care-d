@@ -113,6 +113,8 @@ class HospitalResult(BaseModel):
     flags: list[str] = Field(default_factory=list)
     evidence: dict[str, str] = Field(default_factory=dict)
     reasoning: str
+    phone: str | None = None
+    email: str | None = None
 
 
 class Trace(BaseModel):
