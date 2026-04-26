@@ -97,3 +97,74 @@ uvicorn backend.app:app --reload --port 8000
 ```
 
 Hit http://localhost:8000/docs for the interactive Swagger UI.
+
+---
+
+## Switching the LLM provider
+
+Set `LLM_PROVIDER` in `.env` (or as a Space secret) to one of:
+
+```text
+openai (default), databricks, groq, together, fireworks,
+openrouter, huggingface, custom
+```
+
+Each profile fills sensible defaults for `OPENAI_BASE_URL`,
+`OPENAI_LLM_MODEL`, and `OPENAI_EMBED_MODEL` from
+`backend/config.py::_PROVIDER_PROFILES`. Override any of those env vars
+to take control. Token cost tracking adapts automatically (see
+`backend/core/llm.py::_PRICE_PER_M_PROMPT_USD` / `_COMPLETION_USD`).
+
+Example — Databricks Agent Bricks:
+
+```text
+LLM_PROVIDER=databricks
+DATABRICKS_HOST=https://dbc-xxxxxxx-xxxx.cloud.databricks.com
+DATABRICKS_TOKEN=<PAT>
+DATABRICKS_LLM_ENDPOINT=databricks-meta-llama-3-1-70b-instruct
+DATABRICKS_EMBED_ENDPOINT=databricks-bge-large-en
+```
+
+Example — Groq (free tier, OpenAI fallback for embeddings):
+
+```text
+LLM_PROVIDER=groq
+OPENAI_API_KEY=<groq key>
+EMBED_FALLBACK_TO_OPENAI=true
+# also keep your real OPENAI_API_KEY around so embeddings still work
+```
+
+---
+
+## Switching to Mosaic AI Vector Search
+
+1. In Databricks: import and run `databricks/notebooks/04_vector_search.py`.
+   It creates the endpoint, index, and the smoke test.
+2. In `.env` (or Space secrets):
+   ```text
+   VECTOR_SEARCH_ENDPOINT=healthmap-vector-search
+   VECTOR_SEARCH_INDEX=workspace.healthmap_agent.facilities_clean_vs_index
+   DATABRICKS_HOST=https://...
+   DATABRICKS_TOKEN=...
+   ```
+3. Install the optional SDK on your backend host:
+   ```bash
+   pip install databricks-vectorsearch
+   ```
+4. The retriever auto-detects the env vars and routes through Mosaic
+   AI VS. If the call fails it falls back to the local FAISS index, so
+   the API never goes down.
+
+---
+
+## Running the full Databricks pipeline as a job
+
+```powershell
+databricks jobs create --json @databricks/jobs/pipeline_job.json
+```
+
+The pipeline runs setup -> ingest -> regex extract / trust / deserts ->
+crisis map -> Genie setup helper. To swap regex for LLM extraction, add
+the `extract_with_agent_bricks` task pointing at `02b_extract_with_agent_bricks`
+and update notebook 02 / 03 to read from `capabilities_extracted_llm`
+(see `docs/DATABRICKS_RUNBOOK.md`).

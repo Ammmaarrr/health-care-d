@@ -14,9 +14,13 @@ def query(req: QueryRequest) -> QueryResponse:
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Empty query.")
     try:
-        return run(req.query)
+        return run(
+            req.query,
+            origin_lat=req.origin_lat,
+            origin_lng=req.origin_lng,
+            use_llm_validator=req.use_llm_validator,
+        )
     except FileNotFoundError as e:
-        # Index/extractions not built yet.
         raise HTTPException(
             status_code=503,
             detail=(

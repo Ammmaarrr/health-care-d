@@ -18,17 +18,32 @@ Output ONLY valid JSON with this exact shape:
   "district": string | null,
   "rural": boolean | null,
   "required_capabilities": string[],
-  "constraints": string[]
+  "constraints": string[],
+  "doctor_preference": "full-time" | "part-time" | null
 }
 
 Rules:
-- `required_capabilities` must use only these tokens: \
-"icu", "emergency", "surgery", "anesthesiologist", "oxygen".
-- "appendectomy", "trauma", "operation", "OT" → "surgery".
-- "casualty", "ER", "emergency room", "24/7 care" → "emergency".
-- "ventilator", "critical care", "intensive care" → "icu".
-- "anesthesia", "anaesthesiology" → "anesthesiologist".
-- "O2", "oxygen supply", "oxygen support" → "oxygen".
+- `required_capabilities` must use only these tokens:
+"icu", "emergency", "surgery", "anesthesiologist", "oxygen",
+"oncology", "dialysis", "neonatal", "trauma", "lab", "imaging".
+
+  Mapping hints:
+  - "appendectomy", "operation", "OT", "operating theatre" -> "surgery".
+  - "casualty", "ER", "emergency room", "24/7 care", "ambulance" -> "emergency".
+  - "ventilator", "critical care", "intensive care" -> "icu".
+  - "anesthesia", "anaesthesiology" -> "anesthesiologist".
+  - "O2", "oxygen supply", "oxygen support" -> "oxygen".
+  - "cancer", "chemotherapy", "chemo", "radiation therapy", "tumor",
+    "tumour" -> "oncology".
+  - "kidney failure", "haemodialysis", "hemodialysis", "renal",
+    "nephrology" -> "dialysis".
+  - "newborn", "premature", "NICU", "paediatric ICU" -> "neonatal".
+  - "accident", "polytrauma", "head injury", "road accident" -> "trauma";
+    if the user mentions both "trauma" and "emergency", include both.
+  - "pathology", "blood test", "biochemistry", "haematology",
+    "microbiology" -> "lab".
+  - "x-ray", "X-ray", "MRI", "CT", "CT scan", "ultrasound", "sonography",
+    "radiograph", "imaging" -> "imaging".
 
 - LOCATION INFERENCE — when the user mentions a city / town only, set
   `state` to the Indian state that contains it. Use this lookup:
@@ -65,8 +80,11 @@ Rules:
 
 - `rural` is true ONLY if the query explicitly says "rural", "village",
   or names a small/known-rural area. Otherwise null.
-- `constraints` captures other requirements verbatim (e.g. "part-time doctors",
-  "tertiary care", "within 50 km").
+- `doctor_preference` is "part-time" when the user says "part-time",
+  "parttime", "visiting", or "on-call" doctors. It is "full-time" when
+  they say "full-time", "resident", or "in-house" doctors. Otherwise null.
+- `constraints` captures other requirements verbatim (e.g. "tertiary care",
+  "within 50 km", "low cost").
 
 Query: {query}
 
@@ -80,10 +98,25 @@ EXTRACT_PROMPT = """\
 You extract structured medical capabilities from a hospital's free-form notes.
 
 Be STRICT and CONSERVATIVE:
-- If a capability is not explicitly mentioned → "uncertain".
-- Do NOT infer. If they say "general medicine", do NOT mark surgery as yes.
-- If they say "ICU available" → has_icu = "yes".
-- If they say "no ICU" / "ICU under construction" → has_icu = "no".
+- If a capability is not explicitly mentioned -> "uncertain".
+- Do NOT infer. If the notes say "general medicine", do NOT mark surgery yes.
+- "ICU available" / "intensive care unit" -> has_icu = "yes".
+- "no ICU" / "ICU under construction" / "ICU planned" -> has_icu = "no".
+- The same yes/no/uncertain rules apply to every capability below.
+
+Capability vocabulary (use exactly these field names):
+- has_icu               (ICU / intensive care / critical care / ventilator)
+- has_emergency         (ER / casualty / 24x7 / ambulance)
+- has_surgery           (surgical / operating theatre / appendectomy / etc.)
+- has_anesthesiologist  (anesthesiologist on staff)
+- has_oxygen            (oxygen supply / O2 cylinders / oxygen plant)
+- has_oncology          (oncology / cancer / chemotherapy / radiation)
+- has_dialysis          (dialysis / haemodialysis / nephrology / renal unit)
+- has_neonatal          (NICU / neonatal / newborn / premature unit)
+- has_trauma            (trauma / accident ward / polytrauma)
+- has_lab               (laboratory / pathology / biochemistry / haematology)
+- has_imaging           (X-ray / CT / MRI / ultrasound / radiograph)
+- doctor_type           ("full-time", "part-time", or "unknown")
 
 Output ONLY valid JSON with this exact shape:
 {
@@ -92,6 +125,12 @@ Output ONLY valid JSON with this exact shape:
   "has_surgery":         "yes" | "no" | "uncertain",
   "has_anesthesiologist":"yes" | "no" | "uncertain",
   "has_oxygen":          "yes" | "no" | "uncertain",
+  "has_oncology":        "yes" | "no" | "uncertain",
+  "has_dialysis":        "yes" | "no" | "uncertain",
+  "has_neonatal":        "yes" | "no" | "uncertain",
+  "has_trauma":          "yes" | "no" | "uncertain",
+  "has_lab":             "yes" | "no" | "uncertain",
+  "has_imaging":         "yes" | "no" | "uncertain",
   "doctor_type":         "full-time" | "part-time" | "unknown",
   "evidence": {
     "icu":              string,
@@ -99,6 +138,12 @@ Output ONLY valid JSON with this exact shape:
     "surgery":          string,
     "anesthesiologist": string,
     "oxygen":           string,
+    "oncology":         string,
+    "dialysis":         string,
+    "neonatal":         string,
+    "trauma":           string,
+    "lab":              string,
+    "imaging":          string,
     "doctor_type":      string
   }
 }
@@ -129,7 +174,12 @@ Known medical requirements (from external sources):
 Apply these rules strictly:
 - Surgery requires anesthesiologist + oxygen.
 - Emergency requires oxygen.
-- ICU requires ventilator OR explicit critical-care indicators.
+- ICU requires ventilator OR explicit critical-care indicators (treat
+  oxygen as a strong supporting signal).
+- Oncology requires laboratory AND imaging support.
+- Dialysis requires laboratory support.
+- Neonatal/NICU requires oxygen.
+- Trauma care requires emergency capability.
 
 Output ONLY valid JSON:
 {

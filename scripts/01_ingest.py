@@ -1,13 +1,12 @@
-"""One-shot: load xlsx → canonicalize → preprocess → embed → write FAISS.
-
-Run after editing `backend/pipeline/load.py::canonicalize` to map the actual
-VF column names. Until then this script will fail with `NotImplementedError`,
-which is intentional.
+"""One-shot: load xlsx -> canonicalize -> preprocess -> embed -> write FAISS.
 
 Usage:
-    python -m scripts.01_ingest
+    python -m scripts.01_ingest                  # full pipeline (requires LLM provider key)
+    python -m scripts.01_ingest --skip-embed     # parquet only (no API needed)
 """
 from __future__ import annotations
+
+import argparse
 
 from rich import print
 
@@ -18,6 +17,14 @@ from backend.pipeline import preprocess as pp
 
 
 def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--skip-embed",
+        action="store_true",
+        help="Skip the FAISS embedding step. Useful when no LLM provider key is available; you can run regex extraction on the parquet without it.",
+    )
+    args = p.parse_args()
+
     print(f"[bold]Loading[/] {settings.raw_path}")
     raw = load_pipe.load_raw()
     print(f"  rows={len(raw)}  cols={list(raw.columns)}")
@@ -36,9 +43,13 @@ def main() -> None:
     df.to_parquet(settings.processed_path)
     print(f"  wrote {settings.processed_path}")
 
-    print("[bold]Embedding + building FAISS[/] ...")
-    embed_pipe.build_index(df, text_col="notes")
-    print(f"  wrote {settings.index_path}")
+    if args.skip_embed:
+        print("[yellow]Skipping FAISS index build[/] (--skip-embed). "
+              "Run again without the flag once a provider key is in .env.")
+    else:
+        print("[bold]Embedding + building FAISS[/] ...")
+        embed_pipe.build_index(df, text_col="notes")
+        print(f"  wrote {settings.index_path}")
 
     print("[bold green]Done.[/]")
 

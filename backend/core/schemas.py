@@ -2,6 +2,12 @@
 
 Frontend (Lovable / v0) builds against these field names. Do not rename
 without updating `TASK.md` § 3 and the frontend.
+
+The capability vocabulary covers the MVP requirements (ICU, emergency,
+surgery, anesthesiologist, oxygen) and the high-acuity specialties the
+brief explicitly calls out — Oncology, Dialysis, Neonatal, Emergency
+Trauma — plus two supporting infrastructure capabilities (lab, imaging)
+that the validator agent uses to flag contradictions.
 """
 from __future__ import annotations
 
@@ -17,6 +23,23 @@ TriState = Literal["yes", "no", "uncertain"]
 DoctorType = Literal["full-time", "part-time", "unknown"]
 
 
+# Tokens accepted in `ParsedQuery.required_capabilities` and
+# emitted by `ExtractionAgent` (each maps to a `has_*` field below).
+CAPABILITY_TOKENS: tuple[str, ...] = (
+    "icu",
+    "emergency",
+    "surgery",
+    "anesthesiologist",
+    "oxygen",
+    "oncology",
+    "dialysis",
+    "neonatal",
+    "trauma",
+    "lab",
+    "imaging",
+)
+
+
 class Capabilities(BaseModel):
     """Conservative capability extraction. 'uncertain' is the safe default."""
 
@@ -25,6 +48,14 @@ class Capabilities(BaseModel):
     has_surgery: TriState = "uncertain"
     has_anesthesiologist: TriState = "uncertain"
     has_oxygen: TriState = "uncertain"
+    # High-acuity specialties the brief calls out by name.
+    has_oncology: TriState = "uncertain"
+    has_dialysis: TriState = "uncertain"
+    has_neonatal: TriState = "uncertain"
+    has_trauma: TriState = "uncertain"
+    # Supporting infrastructure used by the validator.
+    has_lab: TriState = "uncertain"
+    has_imaging: TriState = "uncertain"
     doctor_type: DoctorType = "unknown"
 
 
@@ -36,6 +67,12 @@ class Evidence(BaseModel):
     surgery: str | None = None
     anesthesiologist: str | None = None
     oxygen: str | None = None
+    oncology: str | None = None
+    dialysis: str | None = None
+    neonatal: str | None = None
+    trauma: str | None = None
+    lab: str | None = None
+    imaging: str | None = None
     doctor_type: str | None = None
 
 
@@ -49,6 +86,9 @@ class ParsedQuery(BaseModel):
     rural: bool | None = None
     required_capabilities: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    # Explicit doctor preference (e.g. "part-time doctors" in the brief's
+    # example query). null when the user did not constrain it.
+    doctor_preference: DoctorType | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -117,6 +157,9 @@ class HospitalResult(BaseModel):
     email: str | None = None
     """Decomposed inputs to `trust_score` (for row-level agentic traceability)."""
     trust_breakdown: TrustBreakdown
+    # Optional Haversine distance from a user-supplied origin. Only set
+    # when the request includes `origin_lat` + `origin_lng`.
+    distance_km: float | None = None
 
 
 class Trace(BaseModel):
@@ -125,10 +168,18 @@ class Trace(BaseModel):
     validator_findings: list[dict] = Field(default_factory=list)
     trust_breakdown: dict = Field(default_factory=dict)
     steps: list[str] = Field(default_factory=list)
+    # Token / cost summary for the whole run, populated by the orchestrator.
+    cost: dict[str, float] = Field(default_factory=dict)
 
 
 class QueryRequest(BaseModel):
     query: str
+    # Optional anchor for "nearest" reasoning. Both must be set together.
+    origin_lat: float | None = None
+    origin_lng: float | None = None
+    # Toggle the more expensive validator LLM cross-check on the top-K
+    # results (defaults true; set to false for fast demos).
+    use_llm_validator: bool = True
 
 
 class QueryResponse(BaseModel):
@@ -145,6 +196,11 @@ class DesertGap(BaseModel):
     missing_or_uncertain: int
     total: int
     gap_ratio: float
+    # Wilson 95% confidence interval on `gap_ratio`. Lets NGO planners
+    # distinguish a truly under-served region from a region with sparse
+    # data. (Areas-of-Research § 4 in the brief.)
+    wilson_lower: float
+    wilson_upper: float
 
 
 class DesertMapResponse(BaseModel):
@@ -160,6 +216,8 @@ class PinDesertGap(BaseModel):
     total: int
     missing_or_uncertain: int
     risk: float
+    wilson_lower: float
+    wilson_upper: float
     centroid_lat: float | None
     centroid_lng: float | None
 

@@ -7,9 +7,15 @@ Composite 0..1 score from four factors:
                     + validator    * 0.30
                     + evidence     * 0.15
                     + validator_adjustment)
+
+The capability vocabulary now includes the high-acuity specialties the
+brief calls out (oncology, dialysis, neonatal, trauma) plus supporting
+infrastructure (lab, imaging) so the trust score reflects the same
+breadth of evidence that the rest of the system extracts.
 """
 from __future__ import annotations
 
+from backend.core.mlflow_setup import trace_step
 from backend.core.schemas import (
     Capabilities,
     Evidence,
@@ -19,16 +25,45 @@ from backend.core.schemas import (
 )
 
 
+# Keep this list in sync with `extraction_agent._TRISTATE_FIELDS` + doctor_type.
+_CAP_FIELDS: tuple[str, ...] = (
+    "has_icu",
+    "has_emergency",
+    "has_surgery",
+    "has_anesthesiologist",
+    "has_oxygen",
+    "has_oncology",
+    "has_dialysis",
+    "has_neonatal",
+    "has_trauma",
+    "has_lab",
+    "has_imaging",
+    "doctor_type",
+)
+_EV_FIELDS: tuple[str, ...] = (
+    "icu",
+    "emergency",
+    "surgery",
+    "anesthesiologist",
+    "oxygen",
+    "oncology",
+    "dialysis",
+    "neonatal",
+    "trauma",
+    "lab",
+    "imaging",
+    "doctor_type",
+)
+
+
 def _completeness(cap: Capabilities) -> float:
     """Fraction of fields that are not 'uncertain'/'unknown'."""
-    fields = ("has_icu", "has_emergency", "has_surgery",
-              "has_anesthesiologist", "has_oxygen", "doctor_type")
     known = 0
-    for f in fields:
+    for f in _CAP_FIELDS:
         v = getattr(cap, f)
         if v not in ("uncertain", "unknown"):
             known += 1
-    return known / len(fields)
+    return known / len(_CAP_FIELDS)
 
 
 def _consistency(cap: Capabilities) -> float:
@@ -40,14 +75,21 @@ def _consistency(cap: Capabilities) -> float:
         score -= 0.3
     if cap.has_icu == "yes" and cap.has_oxygen != "yes":
         score -= 0.2
+    if cap.has_oncology == "yes" and (cap.has_lab != "yes" or cap.has_imaging != "yes"):
+        score -= 0.2
+    if cap.has_dialysis == "yes" and cap.has_lab != "yes":
+        score -= 0.15
+    if cap.has_neonatal == "yes" and cap.has_oxygen != "yes":
+        score -= 0.2
+    if cap.has_trauma == "yes" and cap.has_emergency != "yes":
+        score -= 0.15
     return max(0.0, score)
 
 
 def _evidence_strength(ev: Evidence) -> float:
     """Fraction of evidence fields that have a non-empty supporting snippet."""
-    fields = ("icu", "emergency", "surgery", "anesthesiologist", "oxygen", "doctor_type")
-    filled = sum(1 for f in fields if getattr(ev, f))
-    return filled / len(fields)
+    filled = sum(1 for f in _EV_FIELDS if getattr(ev, f))
+    return filled / len(_EV_FIELDS)
 
 
 def _validator_score(v: ValidatorResult) -> float:
@@ -59,6 +101,7 @@ def _validator_score(v: ValidatorResult) -> float:
     return max(0.0, 1.0 - (high * 0.4 + med * 0.2 + low * 0.05))
 
 
+@trace_step("trust_score")
 def score(
     cap: Capabilities,
     ev: Evidence,

@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from backend.core.llm import chat_text
+from backend.core.mlflow_setup import trace_step
 from backend.core.prompts import RANK_PROMPT, TRACE_PROMPT
 from backend.core.schemas import (
     Capabilities,
@@ -18,6 +19,7 @@ from backend.core.schemas import (
 )
 
 
+@trace_step("explain_hospital")
 def explain_hospital(
     name: str,
     location: dict[str, Any],

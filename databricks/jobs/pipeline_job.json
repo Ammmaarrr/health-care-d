@@ -1,0 +1,63 @@
+{
+  "run_name": "healthmap-agent-databricks-pipeline",
+  "tasks": [
+    {
+      "task_key": "setup",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/00_setup",
+        "source": "WORKSPACE"
+      }
+    },
+    {
+      "task_key": "ingest",
+      "depends_on": [{"task_key": "setup"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/01_ingest_excel_to_delta",
+        "source": "WORKSPACE"
+      }
+    },
+    {
+      "task_key": "extract_trust_deserts",
+      "depends_on": [{"task_key": "ingest"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/02_extract_trust_and_deserts",
+        "source": "WORKSPACE"
+      }
+    },
+    {
+      "task_key": "query_demo",
+      "depends_on": [{"task_key": "extract_trust_deserts"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/03_query_demo_with_mlflow",
+        "source": "WORKSPACE"
+      }
+    },
+    {
+      "task_key": "vector_search",
+      "depends_on": [{"task_key": "ingest"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/04_vector_search",
+        "source": "WORKSPACE"
+      }
+    },
+    {
+      "task_key": "crisis_map",
+      "depends_on": [{"task_key": "extract_trust_deserts"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/05_crisis_map",
+        "source": "WORKSPACE"
+      }
+    },
+    {
+      "task_key": "genie_setup",
+      "depends_on": [{"task_key": "crisis_map"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/06_genie_setup",
+        "source": "WORKSPACE"
+      }
+    }
+  ],
+  "queue": {
+    "enabled": true
+  }
+}

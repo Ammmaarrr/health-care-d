@@ -15,6 +15,7 @@ from typing import Iterable
 
 from backend.core import medical_rules
 from backend.core.llm import chat_json
+from backend.core.mlflow_setup import trace_step
 from backend.core.prompts import VALIDATOR_PROMPT
 from backend.core.schemas import (
     Capabilities,
@@ -35,6 +36,7 @@ def _gather_standards(required: Iterable[str]) -> str:
     return "\n\n".join(parts)
 
 
+@trace_step("validator")
 def validate(
     cap: Capabilities,
     parsed: ParsedQuery,

@@ -1,0 +1,15 @@
+{
+  "run_name": "healthmap-agent-setup",
+  "tasks": [
+    {
+      "task_key": "setup",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/m.ammar.63.64@gmail.com/healthmap-agent/00_setup",
+        "source": "WORKSPACE"
+      }
+    }
+  ],
+  "queue": {
+    "enabled": true
+  }
+}
