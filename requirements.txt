@@ -29,6 +29,7 @@ mlflow>=2.13
 
 # --- dev / nice-to-haves ---
 rich>=13.7
+huggingface_hub>=0.20
 
 # --- OPTIONAL: Mosaic AI Vector Search backend (Databricks). The
 # --- FastAPI retriever lazy-imports this only when VECTOR_SEARCH_ENDPOINT

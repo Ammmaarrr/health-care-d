@@ -139,7 +139,7 @@ dataset/         original xlsx (gitignored)
 - **Next.js UI** in `web/` for **Vercel** (or Lovable in a separate repo; same API contract in `docs/FRONTEND_PROMPT.md`).
 
 ## Deployment
-Full guide: `docs/DEPLOY.md`. **TL;DR when you are exhausted:** (1) Push backend + data to HF with `scripts/deploy_hf.ps1`. (2) In Vercel, import this repo, **Root directory `web`**, set `NEXT_PUBLIC_BACKEND_URL` to your Space. (3) Add your Vercel URL to the Space’s `CORS_ORIGINS` secret and restart the Space.
+Full guide: `docs/DEPLOY.md`. **TL;DR when you are exhausted:** (1) In `.env` add `HUGGINGFACE_HUB_TOKEN`, `HF_USER`, and `HF_SPACE` (see `.env.example` §7), then run `.\scripts\deploy_hf.ps1` from the repo root. (2) [Deploy the frontend to Vercel (import repo)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmmmaarrr%2Fhealth-care-d), set **Root directory** to `web`, and set `NEXT_PUBLIC_BACKEND_URL` to your Space URL. (3) Add your Vercel URL to the Space’s `CORS_ORIGINS` secret and restart the Space.
 
 ## Status
 See [`TASK.md`](./TASK.md) for the live build plan and progress.

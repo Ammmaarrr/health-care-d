@@ -19,12 +19,22 @@ from huggingface_hub import HfApi
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--repo-id", required=True, help="e.g. abdulahadalikhan12/healthmap-agent")
-    p.add_argument("--token", required=True, help="HF write token (hf_...)")
+    p.add_argument(
+        "--token",
+        default="",
+        help="HF write token; if omitted, uses HUGGINGFACE_HUB_TOKEN or HF_TOKEN in .env",
+    )
     p.add_argument("--cors-origins", default="http://localhost:3000",
                    help="Comma-separated origins for the FastAPI CORS middleware.")
     args = p.parse_args()
 
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    root = Path(__file__).resolve().parent.parent
+    load_dotenv(root / ".env")
+    if not (args.token or "").strip():
+        args.token = (os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN") or "").strip()
+    if not args.token:
+        print("ERROR: pass --token or set HUGGINGFACE_HUB_TOKEN in .env", file=sys.stderr)
+        sys.exit(1)
     openai_key = os.getenv("OPENAI_API_KEY")
     tavily_key = os.getenv("TAVILY_API_KEY")
     if not openai_key or not tavily_key:

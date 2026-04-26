@@ -1,7 +1,13 @@
 # Push to Hugging Face Spaces (Docker SDK) using a sibling git worktree.
 #
 # Usage:
-#   .\scripts\deploy_hf.ps1 -User <hf-username> -Token <hf-write-token>
+#   .\scripts\deploy_hf.ps1
+#   .\scripts\deploy_hf.ps1 -User <hf-username> -Token <hf-write-token> -Space <space>
+#
+# Reads from process env (and optional .env in repo root):
+#   HUGGINGFACE_HUB_TOKEN or HF_TOKEN  — required if -Token not passed
+#   HF_USER                            — if -User not passed
+#   HF_SPACE                           — if -Space not passed (default: healthmap-agent)
 #
 # Requires: git-lfs installed (https://git-lfs.com).
 #
@@ -15,12 +21,46 @@
 # 4. Removes the sibling worktree + branch.
 
 param(
-    [Parameter(Mandatory=$true)] [string]$User,
-    [Parameter(Mandatory=$true)] [string]$Token,
-    [string]$Space = "healthmap-agent"
+    [string]$User = "",
+    [string]$Token = "",
+    [string]$Space = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# Resolve repo root and load .env (KEY=VAL) so deploy works from any cwd.
+$ScriptDir = $PSScriptRoot
+$repoRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+Set-Location $repoRoot
+$envFile = Join-Path $repoRoot ".env"
+if (Test-Path $envFile) {
+    Get-Content $envFile -Encoding utf8 | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -match '^\s*#' -or $line -eq "") { return }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { return }
+        $k = $line.Substring(0, $eq).Trim()
+        $v = $line.Substring($eq + 1).Trim()
+        if ($v.Length -ge 2 -and (($v[0] -eq '"' -and $v[-1] -eq '"') -or ($v[0] -eq "'" -and $v[-1] -eq "'"))) {
+            $v = $v.Substring(1, $v.Length - 2)
+        }
+        if ($k -and $v -is [string]) { [void][Environment]::SetEnvironmentVariable($k, $v, "Process") }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($User))  { $User  = $env:HF_USER }
+if ([string]::IsNullOrWhiteSpace($Token)) {
+    $Token = $env:HUGGINGFACE_HUB_TOKEN
+    if ([string]::IsNullOrWhiteSpace($Token)) { $Token = $env:HF_TOKEN }
+}
+if ([string]::IsNullOrWhiteSpace($Space)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:HF_SPACE)) { $Space = $env:HF_SPACE } else { $Space = "healthmap-agent" }
+}
+
+if ([string]::IsNullOrWhiteSpace($User) -or [string]::IsNullOrWhiteSpace($Token)) {
+    Write-Error "Need Hugging Face username + write token. Add to .env: HF_USER=...  and  HUGGINGFACE_HUB_TOKEN=hf_...  (or pass -User and -Token)."
+    exit 1
+}
 
 $lfsCheck = git lfs version 2>$null
 if ($LASTEXITCODE -ne 0) {
@@ -42,7 +82,6 @@ foreach ($f in $mustExist) {
     }
 }
 
-$repoRoot = (Resolve-Path .).Path
 $worktreeDir = Join-Path (Split-Path $repoRoot -Parent) "healthmap-hf-deploy"
 
 Write-Host "Deploying to https://huggingface.co/spaces/$User/$Space" -ForegroundColor Cyan
