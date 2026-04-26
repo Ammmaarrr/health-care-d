@@ -136,10 +136,10 @@ dataset/         original xlsx (gitignored)
 - **Hugging Face Spaces** (Docker SDK) for backend deploy.
 - **Databricks notebooks** (`databricks/notebooks/00..06_*`) for the
   Databricks-native demo path (Delta + Agent Bricks + Mosaic AI VS + Genie).
-- **Lovable / v0 -> Vercel** for the frontend (separate repo).
+- **Next.js UI** in `web/` for **Vercel** (or Lovable in a separate repo; same API contract in `docs/FRONTEND_PROMPT.md`).
 
 ## Deployment
-See `docs/DEPLOY.md` (will be added during step 8 of the plan).
+Full guide: `docs/DEPLOY.md`. **TL;DR when you are exhausted:** (1) Push backend + data to HF with `scripts/deploy_hf.ps1`. (2) In Vercel, import this repo, **Root directory `web`**, set `NEXT_PUBLIC_BACKEND_URL` to your Space. (3) Add your Vercel URL to the Space’s `CORS_ORIGINS` secret and restart the Space.
 
 ## Status
 See [`TASK.md`](./TASK.md) for the live build plan and progress.
