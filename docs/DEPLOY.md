@@ -77,15 +77,39 @@ rebuild the cache.
 
 ## Frontend on Vercel
 
-1. Generate the UI (Lovable or v0) using `docs/FRONTEND_PROMPT.md`.
-2. Push the generated Next.js project to a GitHub repo (e.g.
-   `healthmap-frontend`).
-3. https://vercel.com/new → import the repo.
-4. Set env var: `NEXT_PUBLIC_BACKEND_URL=https://<your-hf-username>-healthmap-agent.hf.space`.
-5. Deploy.
-6. Copy the Vercel URL (e.g. `https://healthmap-agent.vercel.app`)
-   and add it to the Space's `CORS_ORIGINS` secret. The Space will
-   restart automatically.
+The API (FAISS, long requests) stays on **Hugging Face Spaces**. Vercel hosts
+only the **Next.js** UI in this repo under `web/` (same contract as
+`docs/FRONTEND_PROMPT.md`).
+
+### Option A — this monorepo (`web/`)
+
+1. Push the repo to GitHub (or use the existing `health-care-d` remote).
+2. [vercel.com/new](https://vercel.com/new) → **Import** the repository.
+3. **Root Directory:** set to `web` (Project Settings → General, or during import “Override”).
+4. **Environment variables** (Production + Preview):
+   - `NEXT_PUBLIC_BACKEND_URL` = `https://<your-hf-username>-<space-name>.hf.space`  
+     (no trailing slash; use your real Space URL from Hugging Face).
+5. **Deploy.** Vercel runs `npm install` and `npm run build` inside `web/`.
+6. Copy the deployment URL (e.g. `https://health-care-d.vercel.app`) and add it
+   to the Space’s **`CORS_ORIGINS`** (comma-separated with
+   `http://localhost:3000` if you still test locally), then **Restart** the Space
+   or re-run `scripts/set_hf_secrets.py` with `--cors-origins`.
+
+Local preview (requires Node 18+ / npm on your machine):
+
+```powershell
+cd web
+Copy-Item .env.example .env.local   # set NEXT_PUBLIC_BACKEND_URL
+npm install
+npm run dev
+```
+
+### Option B — separate Lovable / v0 project
+
+1. Generate the UI with `docs/FRONTEND_PROMPT.md` and push that Next.js app to
+   its own GitHub repo.
+2. Import that repo in Vercel, set the same `NEXT_PUBLIC_BACKEND_URL`, and
+   update `CORS_ORIGINS` on the Space as in step 6 above.
 
 ---
 
