@@ -233,6 +233,7 @@ def run(query: str, *, top_k: int = 5, retrieve_k: int = 15) -> QueryResponse:
                     reasoning=reasoning,
                     phone=_clean_contact(_g(row, "phone")),
                     email=_clean_contact(_g(row, "email")),
+                    trust_breakdown=trust.breakdown,
                 )
             )
             validator_findings.append({
@@ -252,5 +253,13 @@ def run(query: str, *, top_k: int = 5, retrieve_k: int = 15) -> QueryResponse:
             steps=steps,
         )
         mlflow_setup.log_step("07_trace", trace.model_dump())
+        mlflow_setup.log_genai_style_trace(
+            query=query,
+            steps=steps,
+            result_summary={
+                "n_results": len(results),
+                "facility_ids": [r.facility_id for r in results],
+            },
+        )
 
     return QueryResponse(results=results, trace=trace)

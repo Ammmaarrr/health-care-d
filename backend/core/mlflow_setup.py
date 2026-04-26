@@ -48,3 +48,29 @@ def log_metric(name: str, value: float) -> None:
         mlflow.log_metric(name, float(value))
     except Exception:
         pass
+
+
+def log_genai_style_trace(
+    *,
+    query: str,
+    steps: list[str],
+    result_summary: dict,
+) -> None:
+    """Structured trace for MLflow UI (span-like tree) + compatibility hooks.
+
+    MLflow 2.14+ exposes experiment traces; we always persist a full JSON
+    artifact so runs remain inspectable even on older tracking servers.
+    """
+    tree = {
+        "type": "agent_run",
+        "query": query[:500],
+        "spans": [{"name": f"step_{i+1}", "output": s} for i, s in enumerate(steps)],
+        "result": result_summary,
+    }
+    log_step("agent_traceability_tree", tree)
+    # Per-step text files (readable in MLflow Artifacts, similar to span outputs)
+    try:
+        for i, s in enumerate(steps):
+            mlflow.log_text(s, f"traces/span_{i+1:02d}.txt")
+    except Exception:
+        pass

@@ -115,6 +115,8 @@ class HospitalResult(BaseModel):
     reasoning: str
     phone: str | None = None
     email: str | None = None
+    """Decomposed inputs to `trust_score` (for row-level agentic traceability)."""
+    trust_breakdown: TrustBreakdown
 
 
 class Trace(BaseModel):
@@ -147,3 +149,20 @@ class DesertGap(BaseModel):
 
 class DesertMapResponse(BaseModel):
     gaps: list[DesertGap]
+
+
+class PinDesertGap(BaseModel):
+    """Per-PIN risk for crisis / desert mapping."""
+
+    pin: str
+    state: str | None
+    capability: str
+    total: int
+    missing_or_uncertain: int
+    risk: float
+    centroid_lat: float | None
+    centroid_lng: float | None
+
+
+class PinDesertMapResponse(BaseModel):
+    zones: list[PinDesertGap]
