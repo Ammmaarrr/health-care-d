@@ -58,6 +58,23 @@ def _row_meta(row) -> HospitalMeta:
     return HospitalMeta(facility_type=_g(row, "facility_type"))
 
 
+def _clean_contact(val) -> str | None:
+    """Strip pandas/Excel junk so we never send 'nan' strings to the client."""
+    if val is None:
+        return None
+    try:
+        import math
+
+        if isinstance(val, float) and math.isnan(val):
+            return None
+    except Exception:
+        pass
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", "null", "<na>", "nat"):
+        return None
+    return s
+
+
 def _row_dict(row) -> dict:
     """Convert a pandas Series-ish row to a plain dict."""
     try:
@@ -203,8 +220,6 @@ def run(query: str, *, top_k: int = 5, retrieve_k: int = 15) -> QueryResponse:
             }
 
             fid = str(_g(row, "facility_id", f"row-{idx}"))
-            phone = _g(row, "phone")
-            em = _g(row, "email")
             results.append(
                 HospitalResult(
                     facility_id=fid,
@@ -216,8 +231,8 @@ def run(query: str, *, top_k: int = 5, retrieve_k: int = 15) -> QueryResponse:
                     flags=trust.flags,
                     evidence=evidence_dict,
                     reasoning=reasoning,
-                    phone=str(phone).strip() if phone else None,
-                    email=str(em).strip() if em else None,
+                    phone=_clean_contact(_g(row, "phone")),
+                    email=_clean_contact(_g(row, "email")),
                 )
             )
             validator_findings.append({
