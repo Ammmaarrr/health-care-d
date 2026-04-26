@@ -59,7 +59,12 @@ curl https://<your-hf-username>-healthmap-agent.hf.space/health
 curl -X POST https://<your-hf-username>-healthmap-agent.hf.space/query `
      -H "Content-Type: application/json" `
      -d '{"query":"Find emergency surgery hospital in rural Bihar"}'
+
+# Crisis map (PIN-level zones) — must return JSON with a `zones` array.
+curl "https://<your-hf-username>-healthmap-agent.hf.space/desert-map/pins?capability=icu&top=5"
 ```
+
+If the frontend crisis map shows **404** for every capability, the Space is still running an **older image** that predates `/desert-map/pins`. GitHub `main` can be up to date while the Space lags: the Space is updated by **`scripts\deploy_hf.ps1`**, not by `git push origin` alone. Re-run the deploy script (step 4), wait for the build to finish, then hit the `desert-map/pins` URL again.
 
 If `/health` works but `/query` returns 503, the Space hasn't received
 the data yet — re-run `scripts\deploy_hf.ps1`.
